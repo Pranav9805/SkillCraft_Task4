@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Live Gesture Predictor</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/handpose"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Arial', sans-serif;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            background: linear-gradient(to bottom right, #757f75, #76a987);
+            overflow: hidden;
+            color: white;
+        }
+
+        video, canvas {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            border: 4px solid rgba(255, 255, 255, 0.7);
+            border-radius: 10px;
+            box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
+        }
+
+        #text-output {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: rgba(0, 0, 0, 0.6);
+            padding: 15px 30px;
+            border-radius: 20px;
+            font-size: 24px;
+            font-weight: bold;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+        }
+
+        #fps-counter {
+            position: absolute;
+            top: 70px;
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: rgba(0, 0, 0, 0.6);
+            padding: 10px 20px;
+            border-radius: 15px;
+            font-size: 16px;
+            font-weight: bold;
+        }
+
+        footer {
+            position: absolute;
+            bottom: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 14px;
+            color: rgba(255, 255, 255, 0.8);
+        }
+
+        footer a {
+            color: rgba(255, 255, 255, 0.9);
+            text-decoration: none;
+        }
+
+        footer a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+
+    <video id="video" autoplay playsinline></video>
+    <canvas id="canvas"></canvas>
+
+    <div id="text-output">Loading model...</div>
+    <div id="fps-counter">FPS: 0</div>
+
+    <footer>
+        Live Gesture Predictor | Powered by TensorFlow.js
+    </footer>
+
+    <script>
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const textOutput = document.getElementById('text-output');
+        const fpsCounter = document.getElementById('fps-counter');
+        const context = canvas.getContext('2d');
+
+        let lastFrameTime = Date.now();
+
+        // Load model
+        async function loadModel() {
+            const model = await handpose.load();
+            console.log("Handpose model loaded!");
+            textOutput.textContent = "Gesture: Waiting...";
+            return model;
+        }
+
+        // Start video
+        async function startVideo() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                video.srcObject = stream;
+
+                video.addEventListener('loadeddata', () => {
+                    canvas.width = video.videoWidth;
+                    canvas.height = video.videoHeight;
+                });
+            } catch (err) {
+                console.error("Error accessing webcam: ", err);
+                textOutput.textContent = "Webcam not accessible!";
+            }
+        }
+
+        // Draw hand landmarks
+        function drawHand(hand) {
+            const landmarks = hand.landmarks;
+            context.fillStyle = "red";
+            context.strokeStyle = "lime";
+            context.lineWidth = 2;
+
+            // Draw points
+            landmarks.forEach(([x, y]) => {
+                context.beginPath();
+                context.arc(x, y, 5, 0, 2 * Math.PI);
+                context.fill();
+            });
+
+            // Draw simple skeleton connections (optional)
+            const fingers = [
+                [0,1,2,3,4],     // thumb
+                [0,5,6,7,8],     // index
+                [0,9,10,11,12],  // middle
+                [0,13,14,15,16], // ring
+                [0,17,18,19,20]  // pinky
+            ];
+
+            fingers.forEach(finger => {
+                context.beginPath();
+                finger.forEach((idx, i) => {
+                    const [x, y] = landmarks[idx];
+                    if (i === 0) {
+                        context.moveTo(x, y);
+                    } else {
+                        context.lineTo(x, y);
+                    }
+                });
+                context.stroke();
+            });
+        }
+
+        // Gesture recognition
+        function recognizeGesture(hand) {
+            const landmarks = hand.landmarks;
+
+            if (isThumbsUp(landmarks)) return "Thumbs Up";
+            if (isPeaceSign(landmarks)) return "Peace Sign";
+            if (isFist(landmarks)) return "Fist";
+            if (isHighFive(landmarks)) return "High Five";
+            if (isPointing(landmarks)) return "Pointing";
+
+            return "Unknown Gesture";
+        }
+
+        function isThumbsUp(landmarks) {
+            const thumbTip = landmarks[4];
+            const indexTip = landmarks[8];
+            const middleTip = landmarks[12];
+            const ringTip = landmarks[16];
+            const pinkyTip = landmarks[20];
+
+            return (
+                thumbTip[1] < indexTip[1] &&
+                thumbTip[1] < middleTip[1] &&
+                thumbTip[1] < ringTip[1] &&
+                thumbTip[1] < pinkyTip[1]
+            );
+        }
+
+        function isPeaceSign(landmarks) {
+            const indexTip = landmarks[8];
+            const middleTip = landmarks[12];
+            const ringTip = landmarks[16];
+            const pinkyTip = landmarks[20];
+            const palmBase = landmarks[0];
+
+            const indexExtended = indexTip[1] < palmBase[1];
+            const middleExtended = middleTip[1] < palmBase[1];
+            const ringFolded = ringTip[1] > palmBase[1];
+            const pinkyFolded = pinkyTip[1] > palmBase[1];
+
+            return indexExtended && middleExtended && ringFolded && pinkyFolded;
+        }
+
+        function isFist(landmarks) {
+            const palmBase = landmarks[0];
+            return landmarks.slice(4, 21).every(fingerTip => {
+                const distance = Math.sqrt(
+                    Math.pow(fingerTip[0] - palmBase[0], 2) +
+                    Math.pow(fingerTip[1] - palmBase[1], 2)
+                );
+                return distance < 50;
+            });
+        }
+
+        function isHighFive(landmarks) {
+            const palmBase = landmarks[0];
+            return landmarks.slice(4, 21).every(fingerTip => {
+                return fingerTip[1] < palmBase[1];
+            });
+        }
+
+        function isPointing(landmarks) {
+            const indexTip = landmarks[8];
+            const middleTip = landmarks[12];
+            const ringTip = landmarks[16];
+            const pinkyTip = landmarks[20];
+            const palmBase = landmarks[0];
+
+            return (
+                indexTip[1] < palmBase[1] &&
+                middleTip[1] > palmBase[1] &&
+                ringTip[1] > palmBase[1] &&
+                pinkyTip[1] > palmBase[1]
+            );
+        }
+
+        // FPS tracking
+        function updateFPS() {
+            const now = Date.now();
+            const delta = (now - lastFrameTime) / 1000;
+            lastFrameTime = now;
+            const fps = Math.round(1 / delta);
+            fpsCounter.textContent = `FPS: ${fps}`;
+        }
+
+        // Prediction loop
+        async function predictGesture(model) {
+            context.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+            const predictions = await model.estimateHands(video);
+
+            if (predictions.length > 0) {
+                const hand = predictions[0];
+                drawHand(hand);
+                const gesture = recognizeGesture(hand);
+                textOutput.textContent = `Gesture: ${gesture}`;
+            } else {
+                textOutput.textContent = "Gesture: None detected";
+            }
+
+            updateFPS();
+        }
+
+        async function main() {
+            await startVideo();
+            const model = await loadModel();
+
+            // Run at ~30 FPS
+            setInterval(() => predictGesture(model), 1000 / 30);
+        }
+
+        main();
+    </script>
+</body>
+</html>

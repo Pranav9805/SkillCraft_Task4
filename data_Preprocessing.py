@@ -3,21 +3,17 @@ import numpy as np
 from tensorflow.keras.utils import to_categorical
 
 def load_and_preprocess():
-    # Load dataset CSVs
     train_df = pd.read_csv('data/sign_mnist_train.csv')
     test_df = pd.read_csv('data/sign_mnist_test.csv')
 
-    # Separate features and labels
     X_train = train_df.drop('label', axis=1).values
     y_train = train_df['label'].values
     X_test = test_df.drop('label', axis=1).values
     y_test = test_df['label'].values
 
-    # Reshape pixel data to 28x28 images with one color channel
     X_train = X_train.reshape(-1, 28, 28, 1).astype('float32') / 255.0
     X_test = X_test.reshape(-1, 28, 28, 1).astype('float32') / 255.0
 
-    # One-hot encode the labels for 25 classes (A-Y except J, Z)
     y_train = to_categorical(y_train, num_classes=25)
     y_test = to_categorical(y_test, num_classes=25)
 
